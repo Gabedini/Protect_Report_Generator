@@ -1,0 +1,10 @@
+Software Bill of Materials
+1) Python 3
+	a) Specific modules can can change without notice but, will do my best to include those each
+		i. requests
+		ii. json
+		iii. keyring
+		iv. datetime
+		v. PyQt
+
+
