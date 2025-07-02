@@ -18,6 +18,7 @@ accessToken=""
 class MainWindow(QMainWindow):
 	def __init__(self):#constructor of my mainwindow
 		super().__init__()
+		self.setStyleSheet(self.load_stylesheet())
 		self.setGeometry(700, 300, 500, 500)
 
 		self.stack = QStackedWidget()
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
 		self.hostnameBox = QLineEdit(self) #this is just a text box, called something silly for some reason
 		self.apiClientBox = QLineEdit(self) #The order of these matters
 		self.clientSecretBox = QLineEdit(self) #the first box listed is the one your cursor will default to
+		self.clientSecretBox.setEchoMode(QLineEdit.EchoMode.Password)#obscuring the text from our secret
 		
 
 		self.authenticateButton.setGeometry(0, 0, 200, 200)
@@ -153,6 +155,73 @@ class MainWindow(QMainWindow):
 			exportAlertData.exportAlertData(accessToken, "ganderson")
 
 		#do stuff
+  
+	def load_stylesheet(self):
+		return """
+		QWidget {
+			background-color: #1e1e1e;
+			color: #f0f0f0;
+			font-family: 'Segoe UI', sans-serif;
+			font-size: 14px;
+		}
+
+		QLabel {
+			font-weight: bold;
+			color: #e0e0e0;
+		}
+
+		QLineEdit {
+			background-color: #2c2c2c;
+			border: 1px solid #444;
+			border-radius: 5px;
+			padding: 8px;
+			color: #f0f0f0;
+		}
+
+		QLineEdit:focus {
+			border: 1px solid #3fa46a;
+		}
+
+		QCheckBox {
+			spacing: 6px;
+			padding-left: 2px;
+		}
+
+		QTreeWidget {
+			background-color: #2c2c2c;
+			border: 1px solid #3fa46a;
+			border-radius: 5px;
+		}
+
+		QTreeView::item {
+			padding: 4px;
+		}
+
+		QTreeView::item:hover {
+			background: #384038;
+		}
+
+		QTextEdit {
+			background-color: #2c2c2c;
+			border: 1px solid #444;
+			border-radius: 5px;
+			padding: 8px;
+			color: #f0f0f0;
+		}
+
+		QPushButton {
+			background-color: #3fa46a;
+			color: white;
+			font-weight: bold;
+			padding: 10px;
+			border-radius: 6px;
+			font-size: 16px;
+		}
+
+		QPushButton:hover {
+			background-color: #52c87a;
+		}
+		"""
 """		
 	def checkbox_changed(self, state):#the state value will be 0 for unchecked and 2 for checked
 		print(Qt.CheckState.Checked)

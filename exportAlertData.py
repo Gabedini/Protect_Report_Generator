@@ -81,6 +81,7 @@ LIST_ALERTS_QUERY = """
 
 
 def exportAlertData(token, url):
+    print("running the exportAlertData method")
     global access_token
     access_token = token#passing in the access token that we have fomr the auth screen
     global PROTECT_INSTANCE
@@ -94,10 +95,11 @@ def exportAlertData(token, url):
         )
         sys.exit(1)
 
+    """
     if not all([PROTECT_INSTANCE, CLIENT_ID, PASSWORD]):
         print("ERROR: Variables PROTECT_INSTANCE, CLIENT_ID, and PASSWORD must be set.")
         sys.exit(1)
-
+    """
 
     results = []
     next_token = None
