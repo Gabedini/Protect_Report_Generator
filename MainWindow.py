@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # To convert existing indentation from spaces to tabs hit Ctrl+Shift+P and type:
 # Convert indentation to Tabs
-import getJProtectToken #getJProtectToken.py
-import exportAlertData #exportAlertData.py
+
+#importing other files:
+import getJProtectToken, exportAlertData, deleteComputersFromCSV, generateComputerComplianceReport,generateDeviceControls
 import requests #not sure if needed here or only sub-files?
 import sys
 import json #not sure if needed here or only in sub-files?
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QCheckBox,
 							 QLabel, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit,
-							QStackedWidget, QTextEdit, QTreeWidget, QTreeWidgetItem)
+							QStackedWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QComboBox)
 from PyQt6.QtGui import QIcon, QFont
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
@@ -57,14 +58,26 @@ class MainWindow(QMainWindow):
 		self.clientSecretBox.setPlaceholderText("Client Secret")
 		
 		grid = QGridLayout()#using the grid layout
+		grid.setVerticalSpacing(12)       # ✅ Reduce space between rows
+		grid.setHorizontalSpacing(10)     # (optional) fine-tune this too
+		grid.setContentsMargins(0, 0, 0, 0)
 		grid.addWidget(self.hostnameBox, 0, 0)
 		grid.addWidget(self.apiClientBox, 1, 0)
 		grid.addWidget(self.clientSecretBox, 2, 0)
 		grid.addWidget(self.saveCredentialsCheckbox, 3, 0)
 		grid.addWidget(self.authenticateButton, 4, 0)
-		
-		loginPageWidget.setLayout(grid)
+  
+		# Wrap grid in a centered container
+		form_container = QWidget()
+		form_container.setLayout(grid)
+		form_container.setFixedWidth(300)  # ✅ Max width for form
 
+		outer_layout = QVBoxLayout()
+		outer_layout.addSpacing(60)  # Push form slightly down from top
+		outer_layout.addWidget(form_container, alignment=Qt.AlignmentFlag.AlignHCenter)
+		outer_layout.addStretch()  # ✅ Push content up from bottom
+
+		loginPageWidget.setLayout(outer_layout)
 		return loginPageWidget
 
 	def createOptionsPage(self):
@@ -78,25 +91,48 @@ class MainWindow(QMainWindow):
 		self.tree = QTreeWidget()
 		self.tree.setHeaderHidden(True)  # Hide column headers
 
-		# --- Reports Section ---Qt.ItemFlag.ItemIsTristate
+		# --- Reports Section --- Qt.ItemFlag.ItemIsTristate might be needed for some of these?
 		self.reports = QTreeWidgetItem(["Reports"])
 		self.reports.setFlags(self.reports.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-
+  
+		# --- Reports Option 1: Export alerts to JSON ---
 		self.exportAlertDataCheckbox = QTreeWidgetItem(["Export Alert Data"])
 		self.exportAlertDataCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
 
-		self.script2 = QTreeWidgetItem(["Script 2"])
-		self.script2.setCheckState(0, Qt.CheckState.Unchecked)
+		# --- Option 1 sub-option 1: Alert Level Minimum Severity ---
+		self.minSeverityItem = QTreeWidgetItem(self.exportAlertDataCheckbox)
+		self.minSeverityCombo = QComboBox()
+		self.minSeverityCombo.addItems(["Informational", "Low", "Medium", "High"])
+		self.tree.setItemWidget(self.minSeverityItem, 0, self.minSeverityCombo)
+		# --- Option 1 sub-option 2: Alert Level Maximum Severity ---
+		self.maxSeverityItem = QTreeWidgetItem(self.exportAlertDataCheckbox)
+		self.maxSeverityCombo = QComboBox()
+		self.maxSeverityCombo.addItems(["Informational", "Low", "Medium", "High"])
+		self.tree.setItemWidget(self.maxSeverityItem, 0, self.maxSeverityCombo)
 
-		self.reports.addChildren([self.exportAlertDataCheckbox, self.script2])
+  		# --- Reports Option 2: Export alerts to JSON ---
+		self.generateComplianceReportCheckbox = QTreeWidgetItem(["Generate Computer Compliance Report"])
+		self.generateComplianceReportCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
+  
+		# --- Reports Option 3: Generate Device Controls ---
+		self.generateDeviceControlsCheckbox = QTreeWidgetItem(["Generate Device Controls Report"])
+		self.generateDeviceControlsCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
+		self.reports.addChildren([self.exportAlertDataCheckbox, self.generateComplianceReportCheckbox, self.generateDeviceControlsCheckbox])
+  
+		# --- Option 3 sub-option: Number of days selection ---
+		self.numDaysItem = QTreeWidgetItem(self.generateDeviceControlsCheckbox)
+		self.numDaysCombo = QComboBox()
+		self.numDaysCombo.addItems([str(i) for i in range(1, 31)])#adds 1-30 to dropdown but in shorthand
+		self.tree.setItemWidget(self.numDaysItem, 0, self.numDaysCombo)
 
 		# --- Cleanup Section ---
 		self.cleanup = QTreeWidgetItem(["Cleanup"])
 		self.cleanup.setFlags(self.cleanup.flags() | Qt.ItemFlag.ItemIsUserCheckable)
 
+		# --- Cleanup Option 1: Delete Unused Computers"
 		self.unused_computers = QTreeWidgetItem(["Unused Computers"])
 		self.unused_computers.setCheckState(0, Qt.CheckState.Unchecked)
-
+		# --- Cleanup Option 2: idk yet"
 		self.unused_alerts = QTreeWidgetItem(["Unused Alerts"])
 		self.unused_alerts.setCheckState(0, Qt.CheckState.Unchecked)
 
@@ -104,7 +140,7 @@ class MainWindow(QMainWindow):
 
 		# Add sections to tree
 		self.tree.addTopLevelItems([self.reports, self.cleanup])
-		self.tree.setFixedSize(200,200)#sets the size of our option tree
+		self.tree.setFixedSize(300,200)#sets the size of our option tree
 		# ———————————————————————————————————————
   
 		#makes our button
@@ -142,6 +178,12 @@ class MainWindow(QMainWindow):
 		#getAccessToken(serverURL, clientID, clientSecret)
 		global accessToken
 		accessToken = getJProtectToken.getAccessToken(hostname, apiClient, clientSecret)
+  
+		#turns out we need the instance name sometimes so going to extract that from the URL:
+		global instanceName #there are more elegant ways to do the below, meh
+		splitProtocol=hostname.split('/')[2] #removes https (protocol) from URL
+		instanceName=splitProtocol.split('.')[0] #splits anything after the instance name
+		print(f"The instance name is: {instanceName}")
 
 		if self.saveCredentialsCheckbox.isChecked() == 2:
 			print("Saving Credentials with KeyRing")
@@ -152,7 +194,22 @@ class MainWindow(QMainWindow):
 		print("clicked run")
 		if self.exportAlertDataCheckbox.checkState(0) == Qt.CheckState.Checked:
 			print("Alerts Export checkbox selected")
-			exportAlertData.exportAlertData(accessToken, "ganderson")
+			minSeverity = self.minSeverityCombo.currentText()
+			maxSeverity = self.maxSeverityCombo.currentText()
+			print(f"Min/Max Severity Set: {minSeverity}:{maxSeverity}")
+			exportAlertData.exportAlertData(accessToken, instanceName, minSeverity, maxSeverity)
+			#add line to open file location. Output in window where file was saved
+		if self.generateComplianceReportCheckbox.checkState(0) == Qt.CheckState.Checked:
+			print("Generate Report checkbox selected")
+			generateComputerComplianceReport.generateComputerComplianceReport(accessToken, instanceName)
+   			#run compliance report script
+			#also open file location? Ouptut in window where file was saved for sure though
+		if self.generateDeviceControlsCheckbox.checkState(0) == Qt.CheckState.Checked:
+			print("Generate Device Control checkbox selected")
+			numDays = self.numDaysCombo.currentText()
+			generateDeviceControls.generateDeviceControls(accessToken, instanceName, numDays)
+   			#run compliance report script
+			#also open file location? Ouptut in window where file was saved for sure though
 
 		#do stuff
   
@@ -222,14 +279,6 @@ class MainWindow(QMainWindow):
 			background-color: #52c87a;
 		}
 		"""
-"""		
-	def checkbox_changed(self, state):#the state value will be 0 for unchecked and 2 for checked
-		print(Qt.CheckState.Checked)
-		if state == self.checkbox1.isChecked():#works with 2 but doesn't with any of the other built in options?
-			self.label5.setText("YOU CHECKED THE BOX")
-		else:
-			self.label5.setText("YOU don't like food?")
-"""
 
 def main():
 	app = QApplication(sys.argv)

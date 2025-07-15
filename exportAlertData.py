@@ -7,12 +7,7 @@
 #   Protect, with filtering by severity.
 # - Exports all alert data in JSON format /tmp/ProtectAlerts.json
 
-# Keep the following in mind when using this script:
-# - You must define the PROTECT_INSTANCE, CLIENT_ID, and PASSWORD variables to
-#   match your Jamf Protect environment. The PROTECT_INSTANCE variable is your
-#   tenant name (eg. your-tenant), which is included in your tenant URL (eg.
-#   https://your-tenant.protect.jamfcloud.com).
-# - This script requires the 3rd party Python library 'requests'
+# # - This script requires the 3rd party Python library 'requests'
 
 
 import sys
@@ -80,13 +75,16 @@ LIST_ALERTS_QUERY = """
         """
 
 
-def exportAlertData(token, url):
+def exportAlertData(token, url, minSeverity, maxSeverity):
     print("running the exportAlertData method")
     global access_token
-    access_token = token#passing in the access token that we have fomr the auth screen
+    access_token = token#passing in the access token that we have from the auth screen
     global PROTECT_INSTANCE
     PROTECT_INSTANCE = url
-    
+    global MIN_SEVERITY
+    MIN_SEVERITY = minSeverity
+    global MAX_SEVERITY
+    MAX_SEVERITY = maxSeverity
     if not set({MIN_SEVERITY, MAX_SEVERITY}).issubset(
         {"Informational", "Low", "Medium", "High"}
     ):
