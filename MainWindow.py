@@ -3,10 +3,11 @@
 # Convert indentation to Tabs
 
 #importing other files:
-import getJProtectToken, exportAlertData, deleteComputersFromCSV, generateComputerComplianceReport,generateDeviceControls
+import getJProtectToken, exportAlertData, deleteComputersFromCSV, generateComputerComplianceReport,generateDeviceControls, getAuditLogs
 import requests #not sure if needed here or only sub-files?
 import sys
 import json #not sure if needed here or only in sub-files?
+import keyring
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QCheckBox,
 							 QLabel, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit,
 							QStackedWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QComboBox)
@@ -38,7 +39,10 @@ class MainWindow(QMainWindow):
 		loginPageWidget = QWidget()
 	
 		self.saveCredentialsCheckbox = QCheckBox("Save credentials", self)#can use a layout manager to replace self, but self is simpler for now
-		#self.saveCredentialsCheckbox.stateChanged.connect(self.checkbox_changed)
+		
+		#check if credentials were saved and autofill if they are needs to be added
+
+  		#self.saveCredentialsCheckbox.stateChanged.connect(self.checkbox_changed)
 		self.authenticateButton = QPushButton("Authenticate", self)
 		self.hostnameBox = QLineEdit(self) #this is just a text box, called something silly for some reason
 		self.apiClientBox = QLineEdit(self) #The order of these matters
@@ -51,7 +55,21 @@ class MainWindow(QMainWindow):
 		#this is called connecting a signal to a slot? It makes the button functio do something
 		self.authenticateButton.clicked.connect(self.clickedAuthenticate)#the 'connect' is the signal and 'self.clickedAuthenticate' is the slot
 
-		self.saveCredentialsCheckbox.setChecked(False)#could set to True if want it checked by default
+		#time to add logic to check if keyring items are stored in keychain
+		#it would be ideal to check for all 3 as a failsafe but for now I think this is adequate
+		if keyring.get_password("Jamf Protect Hostname", "Jamf Protect Hostname") != None:
+			#sets save credentials to true, as that was selected previously
+			self.saveCredentialsCheckbox.setChecked(True)
+			#input saved credentials into the associated boxes.
+			try:
+				self.apiClientBox.setText(keyring.get_password("Protect API Client", "API Client"))
+				self.clientSecretBox.setText(keyring.get_password("Protect Credentials", "Protect Credentials"))
+				self.hostnameBox.setText(keyring.get_password("Jamf Protect Hostname", "Jamf Protect Hostname"))
+			except keyring.errors.PasswordGetError:
+				print("failed to retrieve password")
+		else:
+			#if it wasn't true previously, we keep it false
+			self.saveCredentialsCheckbox.setChecked(False)
 
 		self.hostnameBox.setPlaceholderText("Hostname")
 		self.apiClientBox.setPlaceholderText("API Client")
@@ -99,31 +117,40 @@ class MainWindow(QMainWindow):
 		self.exportAlertDataCheckbox = QTreeWidgetItem(["Export Alert Data"])
 		self.exportAlertDataCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
 
-		# --- Option 1 sub-option 1: Alert Level Minimum Severity ---
+			# --- Option 1 sub-option 1: Alert Level Minimum Severity ---
 		self.minSeverityItem = QTreeWidgetItem(self.exportAlertDataCheckbox)
 		self.minSeverityCombo = QComboBox()
 		self.minSeverityCombo.addItems(["Informational", "Low", "Medium", "High"])
 		self.tree.setItemWidget(self.minSeverityItem, 0, self.minSeverityCombo)
-		# --- Option 1 sub-option 2: Alert Level Maximum Severity ---
+			# --- Option 1 sub-option 2: Alert Level Maximum Severity ---
 		self.maxSeverityItem = QTreeWidgetItem(self.exportAlertDataCheckbox)
 		self.maxSeverityCombo = QComboBox()
 		self.maxSeverityCombo.addItems(["Informational", "Low", "Medium", "High"])
+		self.maxSeverityCombo.setCurrentText("High")  # setting default to high for the second box
 		self.tree.setItemWidget(self.maxSeverityItem, 0, self.maxSeverityCombo)
 
-  		# --- Reports Option 2: Export alerts to JSON ---
+  		# --- Reports Option 2: Generate Comliance Report ---
 		self.generateComplianceReportCheckbox = QTreeWidgetItem(["Generate Computer Compliance Report"])
 		self.generateComplianceReportCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
   
 		# --- Reports Option 3: Generate Device Controls ---
 		self.generateDeviceControlsCheckbox = QTreeWidgetItem(["Generate Device Controls Report"])
 		self.generateDeviceControlsCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
-		self.reports.addChildren([self.exportAlertDataCheckbox, self.generateComplianceReportCheckbox, self.generateDeviceControlsCheckbox])
   
-		# --- Option 3 sub-option: Number of days selection ---
+			# --- Option 3 sub-option: Number of days selection ---
 		self.numDaysItem = QTreeWidgetItem(self.generateDeviceControlsCheckbox)
 		self.numDaysCombo = QComboBox()
 		self.numDaysCombo.addItems([str(i) for i in range(1, 31)])#adds 1-30 to dropdown but in shorthand
+		self.numDaysCombo.setCurrentText("30")  # sets default to 30
 		self.tree.setItemWidget(self.numDaysItem, 0, self.numDaysCombo)
+  
+		# --- Reports Option 4: Audit Logs ---
+		self.getAuditLogsCheckbox = QTreeWidgetItem(["Generate Jamf Protect Audit Logs"])
+		self.getAuditLogsCheckbox.setCheckState(0, Qt.CheckState.Unchecked)
+  
+		# --- Adds checkboxes to reports section ---
+		self.reports.addChildren([self.exportAlertDataCheckbox, self.generateComplianceReportCheckbox, self.generateDeviceControlsCheckbox, self.getAuditLogsCheckbox])
+
 
 		# --- Cleanup Section ---
 		self.cleanup = QTreeWidgetItem(["Cleanup"])
@@ -162,6 +189,7 @@ class MainWindow(QMainWindow):
   
 		return optionsPageWidget
 	
+	#this defines all of the logic for the login screen when the 'authenticate button is clicked
 	def clickedAuthenticate(self):
 		print("Button Clicked")
 
@@ -169,12 +197,36 @@ class MainWindow(QMainWindow):
 		hostname = self.hostnameBox.text()
 		apiClient = self.apiClientBox.text()
 		clientSecret = self.clientSecretBox.text()
-		
+
+		if self.saveCredentialsCheckbox.checkState() == Qt.CheckState.Checked:
+			try:
+				#create if doesn't exist/overwrites existing keyring items in case the user updates the value
+				print("Saving login info with keyring")
+				#saving api client to auto fill, saved securely to keychain even if not totally necessary
+				keyring.set_password("Protect API Client", "API Client", apiClient)
+				"""Here's saving the client secret to the Keychain, I'm naming it a little vague on purpose"""
+				keyring.set_password("Protect Credentials", "Protect Credentials", clientSecret)
+				"""And here we abuse keyring to save the URL as well as if it's a password
+   						because I'm already using keyring, not because it makes sense to do this"""
+				keyring.set_password("Jamf Protect Hostname", "Jamf Protect Hostname", hostname)
+			except keyring.errors.PasswordSetError:
+				print("failed to store password")
+		else:
+			#we should destroy the keyring items here if the user unchecks this box
+			print("deleting keyring items, either they don't exist or they do and the box has been unchecked")
+			#need to implement 'try' logic in more places I think
+			try:
+				keyring.delete_password("Protect API Client", "API Client")
+				keyring.delete_password("Protect Credentials", "Protect Credentials")
+				keyring.delete_password("Jamf Protect Hostname", "Jamf Protect Hostname")
+			except keyring.errors.PasswordDeleteError:
+				print("failed to delete password")
+
 		#just for troubleshooting
 		print(f"hostanme is: {hostname}")
 		print(f"Client: {apiClient}")
 		print(f"Secret: {clientSecret}")
-		
+
 		#getAccessToken(serverURL, clientID, clientSecret)
 		global accessToken
 		accessToken = getJProtectToken.getAccessToken(hostname, apiClient, clientSecret)
@@ -190,6 +242,7 @@ class MainWindow(QMainWindow):
 
 		self.stack.setCurrentIndex(1)
 
+	#thie function controls the logic for anything to run that is selected to run in the gui
 	def clickedRun(self):
 		print("clicked run")
 		if self.exportAlertDataCheckbox.checkState(0) == Qt.CheckState.Checked:
@@ -206,8 +259,12 @@ class MainWindow(QMainWindow):
 			#also open file location? Ouptut in window where file was saved for sure though
 		if self.generateDeviceControlsCheckbox.checkState(0) == Qt.CheckState.Checked:
 			print("Generate Device Control checkbox selected")
-			numDays = self.numDaysCombo.currentText()
+			numDays = int(self.numDaysCombo.currentText())#have to convert to int
 			generateDeviceControls.generateDeviceControls(accessToken, instanceName, numDays)
+			#also open file location? Ouptut in window where file was saved for sure though
+		if self.getAuditLogsCheckbox.checkState(0) == Qt.CheckState.Checked:
+			print("Generate Audit Logs checkbox selected")
+			getAuditLogs.getAuditLogs(accessToken, instanceName)
    			#run compliance report script
 			#also open file location? Ouptut in window where file was saved for sure though
 
