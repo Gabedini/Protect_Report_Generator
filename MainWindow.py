@@ -11,7 +11,7 @@ import keyring
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QCheckBox,
 							 QLabel, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit,
 							QStackedWidget, QTextEdit, QTreeWidget, QTreeWidgetItem, QComboBox)
-from PyQt6.QtGui import QIcon, QFont
+from PyQt6.QtGui import QIcon, QFont, QTextCursor, QTextCharFormat, QColor
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
@@ -19,6 +19,7 @@ accessToken=""
 
 class MainWindow(QMainWindow):
 	def __init__(self):#constructor of my mainwindow
+     
 		super().__init__()
 		self.setStyleSheet(self.load_stylesheet())
 		self.setGeometry(700, 300, 500, 500)
@@ -29,10 +30,26 @@ class MainWindow(QMainWindow):
 		self.loginPage = self.createLoginPage()
 		self.optionsPage = self.createOptionsPage()
 
-		self.stack.addWidget(self.loginPage)    # index 0
-		self.stack.addWidget(self.optionsPage)  # index 1
+		self.stack.addWidget(self.loginPage)    #index 0
+		self.stack.addWidget(self.optionsPage)  #index 1
 
-		self.stack.setCurrentIndex(0)           # 👈 show login page by default
+		self.stack.setCurrentIndex(0) # <- show login page by default
+
+	def log(self, message, color="white", bold=False):#going to try and make a log class. Not sure how needed but maybe will make things cleaner?
+		cursor = self.outputBox.textCursor()
+		cursor.movePosition(QTextCursor.MoveOperation.End) #every time the log function is called, we move to the end
+        
+		outputBoxFormat = QTextCharFormat()
+		outputBoxFormat.setForeground(QColor(color))
+		if bold:
+			outputBoxFormat.setFontWeight(QFont.Weight.Bold)
+
+  		#for now, no time/date stamp, but might want to add later if we output this to a proper log file
+		cursor.setCharFormat(outputBoxFormat)
+		cursor.insertText(message + '\n')#line break after each message
+
+		self.outputBox.setTextCursor(cursor)
+		self.outputBox.ensureCursorVisible()
 
 	
 	def createLoginPage(self):#initial the user interface
@@ -179,7 +196,7 @@ class MainWindow(QMainWindow):
 		#makes our box to put information to
 		self.outputBox = QTextEdit()
 		self.outputBox.setReadOnly(True)
-
+		
 		#makes/sets our grid layout
 		grid = QGridLayout()#using the grid layout
 		grid.addWidget(self.tree, 0, 0)#add our option tree
@@ -191,7 +208,6 @@ class MainWindow(QMainWindow):
 	
 	#this defines all of the logic for the login screen when the 'authenticate button is clicked
 	def clickedAuthenticate(self):
-		print("Button Clicked")
 
 		#Get text from the text box, input into local variable
 		hostname = self.hostnameBox.text()
@@ -201,7 +217,6 @@ class MainWindow(QMainWindow):
 		if self.saveCredentialsCheckbox.checkState() == Qt.CheckState.Checked:
 			try:
 				#create if doesn't exist/overwrites existing keyring items in case the user updates the value
-				print("Saving login info with keyring")
 				#saving api client to auto fill, saved securely to keychain even if not totally necessary
 				keyring.set_password("Protect API Client", "API Client", apiClient)
 				"""Here's saving the client secret to the Keychain, I'm naming it a little vague on purpose"""
@@ -209,23 +224,20 @@ class MainWindow(QMainWindow):
 				"""And here we abuse keyring to save the URL as well as if it's a password
    						because I'm already using keyring, not because it makes sense to do this"""
 				keyring.set_password("Jamf Protect Hostname", "Jamf Protect Hostname", hostname)
+				self.log("Credentials were saved to KeyChain")
 			except keyring.errors.PasswordSetError:
-				print("failed to store password")
+				self.log("Failed to svae credentials to KeyChain. This app likely need persmissonis granted in Settings.app")
 		else:
 			#we should destroy the keyring items here if the user unchecks this box
-			print("deleting keyring items, either they don't exist or they do and the box has been unchecked")
+			self.log("Save credentials was previously checked and is no longer, will destroy previously saved credentials in KeyChain")
 			#need to implement 'try' logic in more places I think
 			try:
 				keyring.delete_password("Protect API Client", "API Client")
 				keyring.delete_password("Protect Credentials", "Protect Credentials")
 				keyring.delete_password("Jamf Protect Hostname", "Jamf Protect Hostname")
+				self.log("Deleted credentials")
 			except keyring.errors.PasswordDeleteError:
-				print("failed to delete password")
-
-		#just for troubleshooting
-		print(f"hostanme is: {hostname}")
-		print(f"Client: {apiClient}")
-		print(f"Secret: {clientSecret}")
+				self.log("Failed to delete credentials")
 
 		#getAccessToken(serverURL, clientID, clientSecret)
 		global accessToken
@@ -235,10 +247,7 @@ class MainWindow(QMainWindow):
 		global instanceName #there are more elegant ways to do the below, meh
 		splitProtocol=hostname.split('/')[2] #removes https (protocol) from URL
 		instanceName=splitProtocol.split('.')[0] #splits anything after the instance name
-		print(f"The instance name is: {instanceName}")
-
-		if self.saveCredentialsCheckbox.isChecked() == 2:
-			print("Saving Credentials with KeyRing")
+		self.log(f"Connected to {instanceName}.jamfcloud.com", color="#778EB1")
 
 		self.stack.setCurrentIndex(1)
 
